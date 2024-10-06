@@ -84,6 +84,9 @@ public class CallerCenterManager
 
     public async Task RunCallCenter(CancellationToken cancellationToken)
     {
+        if (IsRunning)
+            return;
+
         try
         {
             IsRunning = true;

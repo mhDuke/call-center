@@ -3,17 +3,18 @@ int id = 0;
 
 int GetId() => ++id;
 
-CallerCenterManager center = new(new ThreeSecondsCallRouter());
+CallerCenterManager center = new(new DefinedCallLengthCallRouter(3));
 CancellationTokenSource cts = new();
 
-center.RunCallCenter(cts.Token);
 void PrintDashboard()
 {
     Console.WriteLine($"calls in queue: {center.CallsInQueue}");
     Console.WriteLine($"calls in progress: {center.CallsInProgress}");
     Console.WriteLine($"available agents: {center.AvailableAgents}");
+    Console.WriteLine($"calls processed: {center.CallsProcessed}");
 }
 
+List<Agent> agents = [];
 while (!cts.Token.IsCancellationRequested)
 {
     var action = ProcessUserInput(Console.ReadLine());
@@ -24,26 +25,27 @@ while (!cts.Token.IsCancellationRequested)
         action();
     }
 }
-
 Action ProcessUserInput(string? v)
 {
     if (string.IsNullOrWhiteSpace(v))
-        return null!;
+        return PrintDashboard;
 
     return v switch
     {
         "c" /*call*/ => () => { center.EnqueueCall(new Call(GetId())); PrintDashboard(); },
-        "a" /*agemt*/ => () => { center.EnqueueAgent(new Agent(GetId())); PrintDashboard(); },
-        "r" /*dash*/ => PrintDashboard,
+        "a" /*agent*/ => () => { Agent a = new(GetId()); agents.Add(a); center.EnqueueAgent(a); PrintDashboard(); },
+        "r" /*remove*/ => () => { var a = agents[0]; center.RemoveAgent(a); agents.Remove(a); PrintDashboard(); },
         "stop" => () => cts.Cancel(),
+        "start" => () => { center.RunCallCenter(cts.Token); PrintDashboard(); },
         _ => () => { }
     };
 }
 
-public class ThreeSecondsCallRouter : ICallRouter
+public class DefinedCallLengthCallRouter(int callLengthInSeconds) : ICallRouter
 {
+    public int CallLengthInSeconds { get; } = callLengthInSeconds;
     public Task RouteCall(Call call, Agent agent, CancellationToken cancellationToken)
     {
-        return Task.Delay(3000, cancellationToken);
+        return Task.Delay(CallLengthInSeconds * 1000, cancellationToken);
     }
 }

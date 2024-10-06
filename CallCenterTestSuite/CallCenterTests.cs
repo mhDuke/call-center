@@ -9,13 +9,23 @@ public class CallCenterTests
     Call NewCall => new(++id);
     Agent NewAgent => new(++id);
 
+    private static CallerCenterManager RunCallCenter(ICallRouter callRouter, CancellationToken token)
+    {
+        var callCenter = new CallerCenterManager(callRouter);
+        callCenter.RunCallCenter(token);
+        return callCenter;
+    }
+    private (CallerCenterManager CallCenter, Task CallCenterProcess) RunAndGetCallCenterTask(ICallRouter callRouter, CancellationToken token)
+    {
+        var callCenter = new CallerCenterManager(callRouter);
+        var task = callCenter.RunCallCenter(token);
+        return (callCenter, task);
+    }
     [Fact]
-    public async Task Queueing3CallsShouldResultIn3CallsInQueue()
+    public void Queueing3CallsShouldResultIn3CallsInQueue()
     {
         //arrange
-        CallerCenterManager center = new(new DoesNothingCallRouter());
-        CancellationTokenSource cts = new();
-        center.RunCallCenter(cts.Token);
+        var center = RunCallCenter(new DoesNothingCallRouter(), default);
 
         //act
         center.EnqueueCall(NewCall)
@@ -27,12 +37,10 @@ public class CallCenterTests
     }
 
     [Fact]
-    public async Task Queueing3AgentsShouldResultIn3AvailableAgents()
+    public void Queueing3AgentsShouldResultIn3AvailableAgents()
     {
         //arrange
-        CallerCenterManager center = new(new DoesNothingCallRouter());
-        CancellationTokenSource cts = new();
-        center.RunCallCenter(cts.Token);
+        var center = RunCallCenter(new DoesNothingCallRouter(), default);
 
         //act
         center.EnqueueAgent(NewAgent)
@@ -47,12 +55,9 @@ public class CallCenterTests
     public async Task Queueing3CallsAndOneAgentShouldResultIn3ProcessedCallsAfter9Seconds()
     {
         //arrange
-        CallerCenterManager center = new(new ThreeSecondsCallRouter());
-        CancellationTokenSource cts = new();
-        center.RunCallCenter(cts.Token);
+        var center = RunCallCenter(new ThreeSecondsCallRouter(), default);
 
         //act
-
         //queue 3 calls
         center.EnqueueCall(NewCall)
             .EnqueueCall(NewCall)
@@ -78,12 +83,9 @@ public class CallCenterTests
     public async Task QueueingOneAgentAnd3CallsShouldResultIn3ProcessedCallsAfter9Seconds()
     {
         //arrange
-        CallerCenterManager center = new(new ThreeSecondsCallRouter());
-        CancellationTokenSource cts = new();
-        center.RunCallCenter(cts.Token);
+        var center = RunCallCenter(new ThreeSecondsCallRouter(), default);
 
         //act
-
         //queue 1 agent
         center.EnqueueAgent(NewAgent);
 
@@ -110,12 +112,9 @@ public class CallCenterTests
     public async Task Queueing3CallsAnd3AgentsShouldResultIn3ProcessedCallsAfter3Seconds()
     {
         //arrange
-        CallerCenterManager center = new(new ThreeSecondsCallRouter());
-        CancellationTokenSource cts = new();
-        center.RunCallCenter(cts.Token);
+        var center = RunCallCenter(new ThreeSecondsCallRouter(), default);
 
         //act
-
         //queue 3 calls
         center.EnqueueCall(NewCall)
             .EnqueueCall(NewCall)
@@ -142,13 +141,11 @@ public class CallCenterTests
 
     [Theory]
     [Repeat(10)]
-    public async Task FailingInCallRoutingShouldNotCrashTheCallCenter(int iteration)
+    public void FailingInCallRoutingShouldNotCrashTheCallCenter(int iteration)
     {
         //arrange
-        CallerCenterManager center = new(new ThrowsExceptionAfterRandomDelayCallRouter());
-        CancellationTokenSource cts = new();
+        var center = RunCallCenter(new ThrowsExceptionAfterRandomDelayCallRouter(), default);
 
-        center.RunCallCenter(cts.Token);
         Assert.True(center.IsRunning);
 
         //act
@@ -159,13 +156,12 @@ public class CallCenterTests
         Assert.True(center.IsRunning);
     }
     [Fact]
-    public async Task CancellingTheCancellationTokenShouldStopTheCallCenter()
+    public void CancellingTheCancellationTokenShouldStopTheCallCenter()
     {
         //arrange
-        CallerCenterManager center = new(new ThreeSecondsCallRouter());
         CancellationTokenSource cts = new();
+        var (center, task) = RunAndGetCallCenterTask(new ThreeSecondsCallRouter(), cts.Token);
 
-        var task = center.RunCallCenter(cts.Token);
         Assert.True(center.IsRunning);
 
         center.EnqueueAgent(NewAgent).EnqueueCall(NewCall).EnqueueCall(NewCall).EnqueueCall(NewCall)
@@ -178,6 +174,45 @@ public class CallCenterTests
         Assert.True(task.IsCanceled);
         Assert.False(center.IsRunning);
     }
+
+    [Fact]
+    public void StartingTheCallCenterSecondTimeShouldHaveNoEffect()
+    {
+        //arrange
+        var (center, task) = RunAndGetCallCenterTask(new ThreeSecondsCallRouter(), default);
+        //act
+        var secondTask = center.RunCallCenter(default);
+
+        //assert
+        Assert.False(task.IsCompleted);
+        Assert.True(secondTask.IsCompleted);
+    }
+    [Fact]
+    public async Task RemovingInCallAgentShouldRemovedTheAgentOnceTheCallIsUp()
+    {
+        //arrange
+        var (center, _) = RunAndGetCallCenterTask(new DefinedCallLengthCallRouter(1), default);
+        var agent = NewAgent;
+
+        //act
+        center.EnqueueAgent(agent).EnqueueCall(NewCall).EnqueueCall(NewCall).EnqueueCall(NewCall);
+        center.RemoveAgent(agent);
+        await Task.Delay(1100);
+
+        //assert
+        Assert.Equal(2, center.CallsInQueue);
+        Assert.Equal(0, center.AvailableAgents);
+    }
+    //[Fact]
+    //public void TestByReference()
+    //{
+    //    object number = 1;
+    //    ByRef(1);
+    //}
+    //private void ByRef(object x)
+    //{
+    //    asd
+    //}
 }
 
 public class DoesNothingCallRouter : ICallRouter
@@ -190,6 +225,14 @@ public class ThreeSecondsCallRouter : ICallRouter
     public Task RouteCall(Call call, Agent agent, CancellationToken cancellationToken)
     {
         return Task.Delay(3000, cancellationToken);
+    }
+}
+public class DefinedCallLengthCallRouter(int callLengthInSeconds) : ICallRouter
+{
+    public int CallLengthInSeconds { get; } = callLengthInSeconds;
+    public Task RouteCall(Call call, Agent agent, CancellationToken cancellationToken)
+    {
+        return Task.Delay(CallLengthInSeconds * 1000, cancellationToken);
     }
 }
 
