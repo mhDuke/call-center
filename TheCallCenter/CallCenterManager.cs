@@ -32,8 +32,6 @@ public class CallerCenterManager
     {
         lock (availableAgents)
         {
-            //if (callsAwaitingAgents.TryDequeue(out var awaiter))
-            //    awaiter.SetResult(agent);
             if (agentAwaitedByCall?.Task.IsCompleted == false)
                 agentAwaitedByCall.SetResult(agent);
             else
@@ -105,11 +103,10 @@ public class CallerCenterManager
             var call = await DequeueCall();
             var agent = await DequeueAgent();
 
-            //call marshalling could fail(throw exception, for example the agent is no longer available)
             Interlocked.Increment(ref callsInProgress);
             try
             {
-                callMarshaller.RouteCall(call, agent, cancellationToken).ContinueWith(callRoutingTask => PutAgentBackToQueue(callRoutingTask, agent, cancellationToken));
+                Task _ = callMarshaller.RouteCall(call, agent, cancellationToken).ContinueWith(callRoutingTask => PutAgentBackToQueue(callRoutingTask, agent, cancellationToken));
             }
             catch (Exception e)
             {

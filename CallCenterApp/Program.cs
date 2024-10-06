@@ -21,7 +21,6 @@ while (!cts.Token.IsCancellationRequested)
 
     if (action is not null)
     {
-        //PrintDashboard();
         action();
     }
 }

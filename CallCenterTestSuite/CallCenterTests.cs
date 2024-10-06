@@ -188,7 +188,7 @@ public class CallCenterTests
         Assert.True(secondTask.IsCompleted);
     }
     [Fact]
-    public async Task RemovingInCallAgentShouldRemovedTheAgentOnceTheCallIsUp()
+    public async Task RemovingInCallAgentShouldRemoveTheAgentOnceTheCallIsUp()
     {
         //arrange
         var (center, _) = RunAndGetCallCenterTask(new DefinedCallLengthCallRouter(1), default);
@@ -202,17 +202,8 @@ public class CallCenterTests
         //assert
         Assert.Equal(2, center.CallsInQueue);
         Assert.Equal(0, center.AvailableAgents);
+        Assert.Equal(1, center.CallsProcessed);
     }
-    //[Fact]
-    //public void TestByReference()
-    //{
-    //    object number = 1;
-    //    ByRef(1);
-    //}
-    //private void ByRef(object x)
-    //{
-    //    asd
-    //}
 }
 
 public class DoesNothingCallRouter : ICallRouter
